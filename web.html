@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Ripple Website</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: white;
+            cursor: none;
+            font-family: monospace;
+        }
+        
+        #backgroundCanvas, #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        .hint {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            font-size: 11px;
+            color: rgba(150, 150, 150, 0.3);
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        #cursor {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(200, 150, 255, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+            transition: width 0.1s, height 0.1s;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="backgroundCanvas"></canvas>
+    <canvas id="overlayCanvas"></canvas>
+    <div id="cursor"></div>
+    <div class="hint">Move cursor to reveal • Press SPACE for shapes</div>
+
+    <script>
+        const bgCanvas = document.getElementById('backgroundCanvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        const overlayCanvas = document.getElementById('overlayCanvas');
+        const overlayCtx = overlayCanvas.getContext('2d');
+        const cursor = document.getElementById('cursor');
+
+        bgCanvas.width = overlayCanvas.width = window.innerWidth;
+        bgCanvas.height = overlayCanvas.height = window.innerHeight;
+
+        const ASCII_CHARS = ['@', '#', '$', '%', '&', '*', '+', '=', '-', ':', '.', '~', '^'];
+        const SHAPES = ['star', 'moon', 'heart', 'cloud'];
+        
+        let ripples = [];
+        let shapeRipples = [];
+        let backgroundImage = null;
+
+        // Load the uploaded image
+        function loadBackgroundImage() {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            // Using your image from the media folder
+            img.src = './media/ASCIIBG2.jpg';
+            
+            img.onload = function() {
+                // Draw the actual image as background
+                bgCtx.drawImage(img, 0, 0, bgCanvas.width, bgCanvas.height);
+            };
+            img.onerror = function() {
+                // Fallback: Create a pastel starry background if image fails to load
+                console.log('Could not load image, using fallback background');
+                drawPastelBackground();
+            };
+        }
+
+        function drawPastelBackground() {
+            // Gradient background
+            const gradient = bgCtx.createLinearGradient(0, 0, bgCanvas.width, bgCanvas.height);
+            gradient.addColorStop(0, '#FFE5EC');    // Light pink
+            gradient.addColorStop(0.3, '#FFF0F5');  // Lavender blush
+            gradient.addColorStop(0.5, '#E8F4F8');  // Light blue
+            gradient.addColorStop(0.7, '#F0E6FA');  // Light purple
+            gradient.addColorStop(1, '#FFE8F0');    // Light rose
+            
+            bgCtx.fillStyle = gradient;
+            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+            // Draw pastel stars
+            drawStars(bgCtx, 50);
+        }
+
+        function drawStars(ctx, count) {
+            const colors = ['#FFB6C1', '#DDA0DD', '#B0E0E6', '#FFE4B5', '#F8BBD0', '#E1BEE7', '#B2EBF2'];
+            
+            for (let i = 0; i < count; i++) {
+                const x = Math.random() * bgCanvas.width;
+                const y = Math.random() * bgCanvas.height;
+                const size = Math.random() * 4 + 2;
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                const rotation = Math.random() * Math.PI * 2;
+                
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(rotation);
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 0.6 + Math.random() * 0.4;
+                
+                // Draw star
+                ctx.beginPath();
+                for (let j = 0; j < 5; j++) {
+                    const angle = (j * 4 * Math.PI) / 5 - Math.PI / 2;
+                    const radius = j % 2 === 0 ? size : size / 2;
+                    const px = Math.cos(angle) * radius;
+                    const py = Math.sin(angle) * radius;
+                    if (j === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Track mouse position
+        let mouseX = 0;
+        let mouseY = 0;
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            cursor.style.left = mouseX + 'px';
+            cursor.style.top = mouseY + 'px';
+            
+            // Add cursor ripple
+            ripples.push({
+                x: mouseX,
+                y: mouseY,
+                radius: 0,
+                maxRadius: 80,
+                opacity: 1,
+                speed: 2
+            });
+        });
+
+        // Space bar for shape ripples
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+                const x = Math.random() * overlayCanvas.width;
+                const y = Math.random() * overlayCanvas.height;
+                
+                shapeRipples.push({
+                    x: x,
+                    y: y,
+                    radius: 0,
+                    maxRadius: 150,
+                    opacity: 1,
+                    speed: 1.5,
+                    shape: shape
+                });
+                
+                // Pulse cursor
+                cursor.style.width = '30px';
+                cursor.style.height = '30px';
+                setTimeout(() => {
+                    cursor.style.width = '20px';
+                    cursor.style.height = '20px';
+                }, 100);
+            }
+        });
+
+        function drawAsciiRipple(ctx, ripple) {
+            const circumference = 2 * Math.PI * ripple.radius;
+            const charCount = Math.floor(circumference / 15);
+            
+            ctx.font = '14px monospace';
+            ctx.globalAlpha = ripple.opacity;
+            
+            for (let i = 0; i < charCount; i++) {
+                const angle = (i / charCount) * Math.PI * 2;
+                const x = ripple.x + Math.cos(angle) * ripple.radius;
+                const y = ripple.y + Math.sin(angle) * ripple.radius;
+                const char = ASCII_CHARS[Math.floor(Math.random() * ASCII_CHARS.length)];
+                
+                // Colorful ASCII
+                const hue = ((ripple.x + ripple.y + i * 10) % 360);
+                ctx.fillStyle = `hsl(${hue}, 60%, 65%)`;
+                ctx.fillText(char, x, y);
+            }
+        }
+
+        function drawShapePath(ctx, shape, scale) {
+            ctx.beginPath();
+            switch (shape) {
+                case 'star':
+                    for (let i = 0; i < 5; i++) {
+                        const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                        const radius = (i % 2 === 0 ? 30 : 15) * scale;
+                        const x = Math.cos(angle) * radius;
+                        const y = Math.sin(angle) * radius;
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.closePath();
+                    break;
+                case 'moon':
+                    ctx.arc(0, 0, 25 * scale, 0, Math.PI * 2);
+                    ctx.arc(10 * scale, 0, 20 * scale, 0, Math.PI * 2, true);
+                    break;
+                case 'heart':
+                    const s = scale * 25;
+                    ctx.moveTo(0, s * 0.3);
+                    ctx.bezierCurveTo(-s * 0.5, -s * 0.3, -s, -s * 0.1, -s, s * 0.3);
+                    ctx.bezierCurveTo(-s, s * 0.7, 0, s * 1.2, 0, s * 1.5);
+                    ctx.bezierCurveTo(0, s * 1.2, s, s * 0.7, s, s * 0.3);
+                    ctx.bezierCurveTo(s, -s * 0.1, s * 0.5, -s * 0.3, 0, s * 0.3);
+                    break;
+                case 'cloud':
+                    const r = 15 * scale;
+                    ctx.arc(-r, 0, r, 0, Math.PI * 2);
+                    ctx.arc(0, -r * 0.5, r * 1.2, 0, Math.PI * 2);
+                    ctx.arc(r, 0, r, 0, Math.PI * 2);
+                    break;
+            }
+        }
+
+        function animate() {
+            // Clear overlay
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            
+            // Draw white overlay
+            overlayCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            overlayCtx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            
+            // Set blend mode to cut out holes
+            overlayCtx.globalCompositeOperation = 'destination-out';
+            
+            // Update and draw cursor ripples
+            ripples = ripples.filter(ripple => {
+                ripple.radius += ripple.speed;
+                ripple.opacity -= 0.02;
+                
+                if (ripple.opacity > 0 && ripple.radius < ripple.maxRadius) {
+                    overlayCtx.beginPath();
+                    overlayCtx.arc(ripple.x, ripple.y, ripple.radius, 0, Math.PI * 2);
+                    overlayCtx.fillStyle = `rgba(0, 0, 0, ${ripple.opacity})`;
+                    overlayCtx.fill();
+                    return true;
+                }
+                return false;
+            });
+            
+            // Update and draw shape ripples
+            shapeRipples = shapeRipples.filter(ripple => {
+                ripple.radius += ripple.speed;
+                ripple.opacity -= 0.01;
+                
+                if (ripple.opacity > 0 && ripple.radius < ripple.maxRadius) {
+                    const scale = ripple.radius / 50;
+                    overlayCtx.save();
+                    overlayCtx.translate(ripple.x, ripple.y);
+                    drawShapePath(overlayCtx, ripple.shape, scale);
+                    overlayCtx.fillStyle = `rgba(0, 0, 0, ${ripple.opacity})`;
+                    overlayCtx.fill();
+                    overlayCtx.restore();
+                    return true;
+                }
+                return false;
+            });
+            
+            // Reset blend mode
+            overlayCtx.globalCompositeOperation = 'source-over';
+            
+            // Draw ASCII characters on top
+            [...ripples, ...shapeRipples].forEach(ripple => {
+                if (ripple.opacity > 0) {
+                    drawAsciiRipple(overlayCtx, ripple);
+                }
+            });
+            
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        loadBackgroundImage();
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            bgCanvas.width = overlayCanvas.width = window.innerWidth;
+            bgCanvas.height = overlayCanvas.height = window.innerHeight;
+            drawPastelBackground();
+        });
+    </script>
+</body>
+</html>
